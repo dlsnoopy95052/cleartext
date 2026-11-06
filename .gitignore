@@ -1,0 +1,4 @@
+.build/
+ClearText.app/
+dist/
+.DS_Store
