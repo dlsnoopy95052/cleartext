@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 ./build_app.sh
-VERSION=1.0
+VERSION=1.1
 STAGE=.build/pkgroot
 rm -rf "$STAGE" dist .build/component.plist
 mkdir -p "$STAGE/Applications" dist

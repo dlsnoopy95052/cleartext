@@ -30,6 +30,9 @@ struct ContentView: View {
         .navigationSubtitle(subtitle)
         .toolbar { toolbar }
         .onChange(of: model.options) { model.reparse() }
+        .onChange(of: model.showOriginal) {
+            if !model.showOriginal && model.sourceDirty { model.sourceDirty = false; model.reparse() }
+        }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             guard let p = providers.first else { return false }
             _ = p.loadObject(ofClass: URL.self) { url, _ in
@@ -68,7 +71,7 @@ struct ContentView: View {
     // MARK: Detail
 
     @ViewBuilder private var detail: some View {
-        if model.doc.isEmpty && model.sourceText.isEmpty {
+        if model.fileName == nil && model.sourceText.isEmpty {
             ContentUnavailableView {
                 Label("Open a messy text file", systemImage: "doc.text.magnifyingglass")
             } description: {
@@ -78,13 +81,12 @@ struct ContentView: View {
                 Button("Paste from Clipboard") { model.loadClipboard() }
             }
         } else if model.showOriginal {
-            ScrollView {
-                Text(model.sourceText)
-                    .font(.system(size: 13, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(24)
-            }
+            TextEditor(text: Binding(
+                get: { model.sourceText },
+                set: { model.sourceText = $0; model.sourceDirty = true }))
+                .font(.system(size: 13, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(20)
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -115,6 +117,9 @@ struct ContentView: View {
                 .help("Organize text from the clipboard (⇧⌘V)")
         }
         ToolbarItemGroup {
+            Button { model.clear() } label: { Label("Clear", systemImage: "xmark.circle") }
+                .help("Clear the opened file and pasted text (⌘K)")
+                .disabled(model.fileName == nil && model.sourceText.isEmpty)
             Picker("View", selection: $model.showOriginal) {
                 Text("Organized").tag(false)
                 Text("Original").tag(true)

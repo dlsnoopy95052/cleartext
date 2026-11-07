@@ -112,7 +112,7 @@ enum Parser {
              .replacingOccurrences(of: "\t", with: "    ")
              .replacingOccurrences(of: "\u{00A0}", with: " ")
         var toks: [Tok] = []
-        for raw in t.split(separator: "\n", omittingEmptySubsequences: false) {
+        for raw in t.split(separator: "\n", omittingEmptySubsequences: false).flatMap({ splitInlineNumbered(String($0)) }) {
             let parts = raw.split(separator: "\u{0C}", omittingEmptySubsequences: false)
             for (k, p) in parts.enumerated() {
                 if k > 0 { toks.append(.pageBreak(nil)) }
@@ -123,6 +123,29 @@ enum Parser {
     }
 
     // MARK: Helpers
+
+    /// Pasted text sometimes loses its line breaks: "Title 1.One 2.Two 3.Three". When a single line holds an
+    /// ascending 1, 2, 3… series of numbered items, break it before each number (and after any lead-in text).
+    private static func splitInlineNumbered(_ line: String) -> [String] {
+        guard line.count > 6, let re = try? NSRegularExpression(pattern: #"(?<![^\s])(\d{1,2})[.)．、](?=[^\s\d])"#) else { return [line] }
+        let ns = line as NSString
+        var picks: [Int] = []
+        var expected = 1
+        for m in re.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
+            if Int(ns.substring(with: m.range(at: 1))) == expected { picks.append(m.range.location); expected += 1 }
+        }
+        guard picks.count >= 2 else { return [line] }
+        var out: [String] = []
+        if picks[0] > 0 {
+            let lead = ns.substring(to: picks[0]).trimmingCharacters(in: .whitespaces)
+            if !lead.isEmpty { out.append(lead); out.append("") }
+        }
+        for (k, start) in picks.enumerated() {
+            let end = k + 1 < picks.count ? picks[k + 1] : ns.length
+            out.append(ns.substring(with: NSRange(location: start, length: end - start)).trimmingCharacters(in: .whitespaces))
+        }
+        return out
+    }
 
     private static func wordCount(_ s: String) -> Int { s.split(whereSeparator: \.isWhitespace).count }
 
@@ -284,7 +307,9 @@ enum Parser {
                         heading(.num(g[1].split(separator: ".").count), t); continue
                     }
                     // 1. Title  (only when standing alone, not part of a list run)
-                    if prevBlank, list == nil, let g = groups(t, #"^(\d+)[.)]\s+(\S.*)$"#),
+                    let numItem = #"^\d+[.)]\s+\S"#
+                    let prevIsNumbered = lineText(i - 1).map { groups($0, numItem) != nil } ?? false
+                    if prevBlank || !prevIsNumbered, list == nil, let g = groups(t, #"^(\d+)[.)]\s+(\S.*)$"#),
                        headingLike(g[2]), startsUpper(g[2]) {
                         let nextIsNumbered = lineText(i + 1).map { groups($0, #"^\d+[.)]\s+\S"#) != nil } ?? false
                         if !nextIsNumbered { heading(.num(1), t); continue }
@@ -311,13 +336,13 @@ enum Parser {
                 if options.detectShortLines, prevBlank, nextBlank, textFollows(after: i),
                    t.count <= 60, wordCount(t) <= 8,
                    let l = t.last, !".,;!".contains(l),
-                   let f = t.first, f.isUppercase || f.isNumber,
+                   let f = t.first, (f.isLetter && !f.isLowercase) || f.isNumber,
                    groups(t, #"^([-*•·▪‣◦–]|\d+[.)]|[a-zA-Z][.)])\s"#) == nil {
                     heading(.short, t); continue
                 }
 
                 // List items
-                if let g = groups(rawLine, #"^(\s*)([-*•·▪‣◦–]|\d+[.)]|[a-zA-Z][.)])\s+(\S.*)$"#) {
+                if let g = groups(rawLine, #"^(\s*)([-*•·▪‣◦–]|\d+[.)]|[a-zA-Z][.)])(?:\s+|(?<=\d[.)])(?=[A-Za-z\x{80}-\x{10FFFF}]))(\S.*)$"#) {
                     flushAll()
                     list = (indent: g[1].count, marker: g[2], lines: [g[3].trimmingCharacters(in: .whitespaces)])
                     continue

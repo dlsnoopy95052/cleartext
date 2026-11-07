@@ -18,10 +18,13 @@ final class DocModel {
     /// Temporary reading marker (lives only in the app; the source text is never changed).
     var markedBlock: UUID?
     var errorMessage: String?
+    /// Source was edited in the Original view; re-organize when switching back.
+    var sourceDirty = false
 
     func setText(_ text: String, name: String?) {
         sourceText = text
         fileName = name
+        sourceDirty = false
         reparse()
     }
 
@@ -57,6 +60,17 @@ final class DocModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func clear() {
+        sourceText = ""
+        fileName = nil
+        sourceDirty = false
+        showOriginal = false
+        doc = Document()
+        markedBlock = nil
+        collapsed = []
+        sidebarExpanded = []
     }
 
     func loadClipboard() {
